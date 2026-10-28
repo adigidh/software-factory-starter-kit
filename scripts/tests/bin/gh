@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Fake gh for the script tests. Replays fixtures from $FAKE_GH_DIR and logs every call to calls.log.
+set -euo pipefail
+D="${FAKE_GH_DIR:?}"
+echo "$*" >>"$D/calls.log"
+case "$1 $2" in
+  "issue list") cat "$D/issues.json" ;;
+  "issue view") jq -c --arg n "$3" '.[] | select(.number == ($n|tonumber))' "$D/issues.json" ;;
+  "issue edit"|"issue comment"|"label create"|"pr edit"|"pr ready") ;;
+  "pr list") cat "$D/prs.json" ;;
+  "pr create") echo "https://github.test/o/r/pull/7" ;;
+  "pr merge") echo "MERGE ATTEMPTED" >>"$D/calls.log"; exit 1 ;;
+  "api repos/o/r/issues/"*) cat "$D/events-$(basename "$(dirname "$2")").json" ;;
+  *)
+    if [[ "$2" == repos/o/r/collaborators/*/permission ]]; then
+      u="$(basename "$(dirname "$2")")"
+      jq -r --arg u "$u" '.[$u] // "none"' "$D/perms.json"
+    else
+      echo "fake gh: unhandled: $*" >&2; exit 99
+    fi ;;
+esac
