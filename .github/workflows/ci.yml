@@ -1,0 +1,43 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Shell syntax
+        run: for f in scripts/*.sh scripts/tests/run.sh scripts/tests/bin/gh; do bash -n "$f"; done
+
+      - name: Script tests
+        run: bash scripts/tests/run.sh
+
+      - name: kit.yaml matches the catalog schema
+        run: |
+          pip install -q jsonschema pyyaml
+          curl -fsSL https://raw.githubusercontent.com/dam-agents/dam-starter-kits/main/kit.schema.json -o /tmp/kit.schema.json
+          python3 - <<'PY'
+          import json, sys, yaml, jsonschema
+          errs = list(jsonschema.Draft202012Validator(json.load(open('/tmp/kit.schema.json'))).iter_errors(yaml.safe_load(open('kit.yaml'))))
+          for e in errs: print('kit.yaml:', e.message)
+          sys.exit(1 if errs else 0)
+          PY
+
+      - name: The factory never merges
+        run: |
+          if grep -rnE 'gh pr merge|--auto|git merge( |$)|git push[^#]* main' scripts/*.sh agents .agents/skills/factory/SKILL.md | grep -vE 'never merge|Never merge|never merges|not merge|does not merge|nothing merge'; then
+            echo "a merge or push-to-main instruction crept in"; exit 1
+          fi
+
+      - name: Changing a sub-agent bumps VERSION
+        if: github.event_name == 'pull_request'
+        run: |
+          base="origin/${{ github.base_ref }}"
+          if ! git diff --quiet "$base...HEAD" -- agents && git diff --quiet "$base...HEAD" -- VERSION; then
+            echo "agents/ changed but VERSION did not: bump VERSION and add a CHANGELOG entry with the install-agents.sh Upgrade step"; exit 1
+          fi
