@@ -75,11 +75,6 @@ factory/dashboard.html    job board; open it against factory/jobs/
 `./install.sh /path/to/repo` still copies the skill and agents into a repo for local
 use. Chat-driven only: the issue sweep and PR scripts expect the DAM home layout.
 
-## Listing it in the catalog
-
-Add `- url: https://github.com/<you>/software-factory-starter-kit` to `catalog.yaml` in
-dam-agents/dam-starter-kits and open a PR.
-
 ## License
 
 Apache License 2.0, see [`LICENSE`](LICENSE). The bundled `tdd` skill and the review

@@ -13,7 +13,7 @@ tagline: Label an issue, get a reviewed pull request.
 category: software
 icon: code
 harnesses: [claude-code]
-docsUrl: https://github.com/aagidh/software-factory-starter-kit
+docsUrl: https://github.com/adigidh/software-factory-starter-kit
 # `self` is this repository at the commit the kit resolved to, so an agent runs
 # the definition this file shipped with. `home`, because the checkout is
 # /home/agent itself; the allowlist .gitignore makes that safe.
