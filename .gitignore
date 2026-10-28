@@ -1,0 +1,29 @@
+# With `seed: {self: true, into: home}` this repository is checked out at the
+# agent's HOME (/home/agent), which also holds secrets and runtime state (.ssh,
+# .claude, .config, work/, ...). Ignore everything at the top level, then
+# re-include only the definition files, so `git add -A` there is safe and a
+# deployed instance can fast-forward its definition without touching work/.
+/*
+
+!/.gitignore
+!/.github/
+!/.agents/
+!/agents/
+!/factory/
+!/scripts/
+!/AGENTS.md
+!/AGENTS.template.md
+!/CLAUDE.md
+!/LICENSE
+!/VERSION
+!/CHANGELOG.md
+!/ONBOARDING.md
+!/README.md
+!/THIRD_PARTY_LICENSES.md
+!/install.sh
+!/kit.yaml
+
+# Never track these.
+.DS_Store
+.claude/settings.local.json
+factory/jobs/
