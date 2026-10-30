@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Fake gitleaks: writes $FAKE_GL_REPORT (a JSON array) to the --report-path, exits $FAKE_GL_RC.
+while [ $# -gt 0 ]; do [ "$1" = --report-path ] && rp="$2"; shift; done
+[ -z "${rp:-}" ] || cat "${FAKE_GL_REPORT:-/dev/null}" >"$rp" 2>/dev/null || echo '[]' >"$rp"
+exit "${FAKE_GL_RC:-0}"

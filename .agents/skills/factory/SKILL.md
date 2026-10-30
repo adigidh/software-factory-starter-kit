@@ -13,10 +13,11 @@ move the job along and keep `job.json` current.
 ## The loop
 
 ```
-feature → spec-writer → builder → [security, ux, ui, code] → WAIT FOR ALL
-                           ▲                                      │
-                           └──── any CHANGES: resume builder ◄────┤
-                                                                  ▼ all PASS
+feature → spec-writer → builder → eval.sh + scan.sh → [security, ux, ui, code] → WAIT FOR ALL
+                           ▲             │ BLOCKING                                   │
+                           ├─────────────┘ (reviewers skipped)                        │
+                           └──────────── any CHANGES: resume builder ◄─────────────────┤
+                                                                                       ▼ all PASS
                        open PR (ready) ◄─ APPROVE ─ approver ─ ESCALATE → draft PR, needs-human
 ```
 
@@ -27,6 +28,7 @@ from `factory/<job-id>` that a human reviews and merges.
 | ------------ | ----------------------- | ------------------------------------------- |
 | spec         | `spec-writer`           | `spec.md`                                   |
 | build        | `builder`               | `build.md` + commits on `factory/<job-id>`  |
+| gates        | scripts, no agent       | `round-N/eval.md`, `round-N/scan.md`        |
 | review       | `reviewer-security`     | `round-N/review-security.md`                |
 |              | `reviewer-ux`           | `round-N/review-ux.md`                      |
 |              | `reviewer-ui`           | `round-N/review-ui.md`                      |
@@ -69,6 +71,7 @@ record is the pull request, whose body carries the spec, build log and decision.
 <repo>/factory/jobs/<job-id>/spec.md
 <repo>/factory/jobs/<job-id>/build.md
 <repo>/factory/jobs/<job-id>/rework-<k>.md     written by you, from /factory rework
+<repo>/factory/jobs/<job-id>/round-<N>/eval.md, scan.md   written by scripts/eval.sh and scan.sh
 <repo>/factory/jobs/<job-id>/round-<N>/review-{security,ux,ui,code}.md
 <repo>/factory/jobs/<job-id>/decision.md
 <repo>/../<name>-factory/<job-id>/             the job's worktree, on factory/<job-id>
@@ -144,16 +147,37 @@ Read the first line of `build.md`.
 
 1. Set `stage: "review"`, `round: N` and all four reviews to `pending`. Create
    `factory/jobs/<job-id>/round-<N>/`.
-2. Spawn all four reviewers **in one message**, so they run in parallel. Each
+2. **Gates.** Run both scripts once for this round, one after the other, and keep
+   both exit codes (do not stop after the first one fails):
+   ```bash
+   bash "$HOME/scripts/eval.sh" <job-id> N
+   bash "$HOME/scripts/scan.sh" <job-id> N
+   ```
+   They write `round-N/eval.md` and `round-N/scan.md` and print one summary line each.
+   Exit 0: nothing blocks. Exit 1: that gate is `BLOCKING: yes` under `GATE_MODE`. Any
+   other exit code (2 is a bad `factory.conf` or a missing job): stop and tell the user.
+   Never edit either file, and never run a script again in the same round to get a
+   different answer. Their logs stay in the job folder and never go into an issue or PR.
+   - **Neither blocks**: go on to step 3.
+   - **One blocks, resumes left**: skip the reviewers. Leave the four reviews
+     `pending`, set `stage: "build"`, then resume the builder with `SendMessage` to
+     `builder-<job-id>`:
+     `Round N gates blocked. Read factory/jobs/<job-id>/round-<N>/eval.md and scan.md (logs for a failing gate are in round-<N>/eval/<gate>.log), fix every blocking item, commit, and update build.md for round N+1.`
+     Wait for it to finish, then go to **Build check**. This uses one resume, like a review.
+   - **One blocks, no resumes left**: write `decision.md` yourself, reading
+     `ESCALATE`, then a blank line, then
+     `Gates still blocking after the last round: <eval and/or scan>, see round-<N>/.`
+     Go to **Needs human**.
+3. Spawn all four reviewers **in one message**, so they run in parallel. Each
    gets the prompt `<paths> Review round N.`, plus its port for `reviewer-ux`
    and `reviewer-ui`.
-3. **WAIT FOR ALL.** Each time a reviewer finishes, read the first line of its
+4. **WAIT FOR ALL.** Each time a reviewer finishes, read the first line of its
    file (`VERDICT: PASS` or `VERDICT: CHANGES`) and write that verdict to
    `job.json` straight away, so the dashboard chips fill in as they land. The
    round is done only when all four `review-*.md` files exist in `round-<N>/`.
    Never resume the builder mid-round. If a reviewer finishes without writing
    its file, or writes a first line that isn't a verdict, stop and tell the user.
-4. Decide:
+5. Decide:
    - **All PASS**: go to **Approve**.
    - **Any CHANGES, resumes left**: set `stage: "build"`, then resume the same
      builder with `SendMessage` to `builder-<job-id>`:
@@ -181,8 +205,10 @@ links the PR there and moves the issue's label to `<label>:pr-open`.
 
 Write the URL to `pr` and set `stage: "pr-open"`. Leave the worktree and branch in
 place: a human may ask for changes on the PR, and `/factory rework` needs them.
-If the script fails (exit 3 means the branch has no commits), set
-`stage: "needs-human"` and tell the user what it printed. Never merge, and never
+If the script fails, set `stage: "needs-human"` and tell the user what it printed. Exit 3
+means the branch has no commits. Exit 4 means `scan.md` found a secret in the branch's
+commits: nothing was pushed, so there is no PR to open. Tell the user to remove it from
+history and rotate it, and do not retry. Never merge, and never
 push to `<base>`.
 
 ### Needs human
@@ -191,7 +217,9 @@ Set `stage: "needs-human"`. The branch and its worktree stay for the human to
 inspect. Tell the user which job is waiting, give the worktree path, and quote
 `decision.md` (or the BLOCKED reason from `build.md`).
 
-If the branch has commits, also run `bash "$HOME/scripts/open-pr.sh" <job-id> draft`: it opens a
+If the branch has commits, also run `bash "$HOME/scripts/open-pr.sh" <job-id> draft` (exit 4, a
+secret in the commits, means it pushed nothing: report that to the user and skip the rest of
+this paragraph; for an issue job still run `issue-labels.sh <issue> human`): it opens a
 **draft** PR so the human can see the work, and for an issue job it moves the label
 to `<label>:needs-human` and comments the PR link. Record the URL in `pr`. If the
 branch has no commits (a BLOCKED build), the script exits 3: for an issue job run

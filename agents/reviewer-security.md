@@ -27,6 +27,14 @@ checkout; your one file goes there.
    Read the changed files in full where the diff isn't enough.
 4. From round 2 on, your own `round-<N-1>/review-security.md`. Check whether
    each finding was fixed.
+5. `<job folder>/round-<N>/scan.md`, the automated scan the orchestrator already
+   ran (gitleaks, semgrep, npm audit, pip-audit, whichever were installed). It is
+   evidence, not a verdict. If the file does not exist, no scan ran: say so under
+   Findings and cover everything by hand. Check each finding it lists against the code and
+   report the real ones under Findings. A scanner marked `not installed`,
+   `error` or `skipped` did not look, so cover that area by hand. `SCAN: CLEAN`
+   means those tools found nothing new, not that the change is safe: the checks
+   below still apply.
 
 ## What to look for
 

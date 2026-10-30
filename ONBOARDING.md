@@ -85,8 +85,16 @@ TRIGGER_LABEL=<label>
 BASE_BRANCH=<base branch>
 MAX_PARALLEL=1
 STALE_MIN=180
+GATE_MODE=warn
 EOF
 ```
+
+`GATE_MODE` is `shadow`, `warn` or `enforce`. Start a new repository on `shadow` (the gates
+run and are reported, nothing blocks), move to `warn` (the default: a failing gate or a
+critical or high finding sends the builder back) once the reports look right, and use
+`enforce` only when a flaky test, any finding, or a scanner that did not run should also
+block. Optional: `GATE_TIMEOUT_SEC=900` (per gate and per scanner) and
+`SEMGREP_CONFIG=p/default`.
 
 For GitHub Enterprise, add a `GH_HOST=<host>` line (for example `github.example.com`):
 the scripts export it so `gh` talks to the right host.
@@ -118,6 +126,30 @@ first jobs run with the repository's conventions in place.
 - **Validation**: tests, build, lint, type-check. Run each once in the clone to confirm it
   works. Record any that fail on the base branch as known failures instead of hiding them.
 - **Conventions**: formatting, naming, layout, things to avoid.
+- **Gates**: a fenced block the factory runs itself before every review round, one
+  `name: command` per line, taken from the Validation commands that pass on the base
+  branch. Use the exact info string `factory-gates`:
+
+  ````markdown
+  ```factory-gates
+  test: npm test
+  build: npm run build
+  lint: npm run lint
+  ```
+  ````
+
+  Leave out anything that fails on the base branch, and anything that needs a login or
+  a live service. Without this block the gate is skipped and the factory says so in
+  every pull request. The block is read from the base branch, so it takes effect once
+  the `AGENTS.md` pull request is merged.
+
+Install the security scanners the scan step uses. Each is optional, and a scanner that is
+missing is reported in every pull request as "not installed" rather than ignored:
+`gitleaks` (a release binary from github.com/gitleaks/gitleaks), `semgrep`
+(`pip install semgrep`) and `pip-audit` (`pip install pip-audit`). `npm audit` ships with npm.
+Semgrep fetches its rules from semgrep.dev, so it needs egress to that host; if it is
+blocked, `scan.sh` reports semgrep as an error, and the operator can allow the host or
+point `SEMGREP_CONFIG` at rules vendored in the target repository.
 
 If the repository has pages to look at, install the browser CLI the UX and UI reviewers use:
 `npm install -g agent-browser && agent-browser install` (the second command downloads Chrome).

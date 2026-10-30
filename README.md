@@ -12,6 +12,24 @@ issue is labelled `factory:needs-human`.
 Bundled skills from mattpocock/skills (MIT, see THIRD_PARTY_LICENSES.md): `tdd` and the
 `code-review` two-axis check inside `reviewer-code`.
 
+## Quality and security gates
+
+Before each review round the factory runs two scripts, no model involved:
+
+- `scripts/eval.sh` runs the commands in the target repo's `factory-gates` block (in
+  `AGENTS.md`, read from the base branch so a job cannot edit its own gates). A command that
+  fails is run twice more: failing every time is `FAIL`, passing on a retry is `FLAKY`.
+- `scripts/scan.sh` runs `gitleaks`, `semgrep`, `npm audit` and `pip-audit` where installed,
+  and reports only what the branch adds over the base. A scanner that is missing or crashed
+  makes the result `INCOMPLETE`, never `CLEAN`.
+
+Results are `round-N/eval.md` and `round-N/scan.md`, shown in the dashboard and in the PR
+body. The security reviewer reads the scan, and the approver escalates on a blocking result.
+When a gate blocks, the reviewers are skipped and the builder goes back to fix it, using one
+of the same three resumes. Rollout is `GATE_MODE` in `factory.conf`: `shadow` (record only),
+`warn` (default: failing gate or critical/high finding blocks), `enforce` (also flaky,
+any finding, incomplete). A leaked secret in the branch's commits is never pushed, in any mode.
+
 ## Start a job
 
 | How | What happens |
@@ -54,6 +72,9 @@ and machine idle time add; the run above sat for hours between steps while waiti
 - **UX and UI reviews need a browser.** They use `agent-browser` when installed, otherwise any headless
   Chrome on the machine (the run above used the local Chrome), otherwise they read the code and say so
   in their review. On a DAM agent neither may exist: see the egress note in `ONBOARDING.md`.
+- **Gates are as good as the repo's own checks.** With no `factory-gates` block `eval.sh`
+  skips; with no scanners installed `scan.sh` says `INCOMPLETE`. Neither pretends to have passed.
+  The gates stop at what the scanners and tests know; they do not replace the security review.
 - **The target needs working `npm`/package install, tests and a build** that run unattended. Tests that
   need a login or a live service will make the builder and reviewers guess.
 - **No auto-recovery.** A job that stalls is found by the `STALE_MIN` orphan check and handed to a person.
@@ -66,7 +87,7 @@ kit.yaml                  the DAM kit manifest (validated in CI against kit.sche
 CLAUDE.md, ONBOARDING.md  the agent's rules and first-run procedure
 .agents/skills/           factory (the loop: spec → build → 4 reviews → approve → PR) and tdd
 agents/                   spec-writer, builder, reviewer-{security,ux,ui,code}, approver
-scripts/                  worklist, precheck (schedule gate), issue-labels, open-pr, install-agents, tests/
+scripts/                  worklist, precheck (schedule gate), issue-labels, open-pr, install-agents, eval, scan, tests/
 factory/dashboard.html    job board; open it against factory/jobs/
 ```
 

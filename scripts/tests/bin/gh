@@ -3,6 +3,8 @@
 set -euo pipefail
 D="${FAKE_GH_DIR:?}"
 echo "$*" >>"$D/calls.log"
+# keep the last --body-file so tests can read what would have been posted
+args=("$@"); for i in "${!args[@]}"; do [ "${args[$i]}" = --body-file ] && cp "${args[$((i+1))]}" "$D/last-body.md"; done
 case "$1 $2" in
   "issue list") cat "$D/issues.json" ;;
   "issue view") jq -c --arg n "$3" '.[] | select(.number == ($n|tonumber))' "$D/issues.json" ;;
