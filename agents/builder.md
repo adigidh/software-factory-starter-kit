@@ -27,6 +27,12 @@ other jobs.
 3. When you are resumed after a review round, every `review-*.md` in the round
    folder the message names. Address each finding in a `VERDICT: CHANGES` file.
    Notes in `VERDICT: PASS` files are optional.
+   When the message says the round's gates blocked, there are no reviews yet: read
+   `eval.md` and `scan.md` in that folder instead. Fix every row of a failing
+   gate (its log is `eval/<gate>.log`) and every critical or high scan finding.
+   A `FLAKY` gate is a real instability: fix the cause if it is in your change.
+   Never edit `eval.md`, `scan.md` or the `factory-gates` block of `AGENTS.md`
+   to make a gate pass.
 4. When you are started for a rework, the `rework-*.md` file the prompt names,
    plus the existing `build.md` and every round folder, so you know the history.
 

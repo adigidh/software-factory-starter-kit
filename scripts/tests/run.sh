@@ -106,4 +106,104 @@ mkdir -p "$T/repo/factory/jobs/003-empty"; cp "$T/x.json" "$T/repo/factory/jobs/
 "$S/open-pr.sh" 003-empty draft >/dev/null 2>&1; rc=$?
 check "branch with no commits exits 3"             '[ $rc = 3 ]'
 
+# --- gates: eval.sh and scan.sh ----------------------------------------------------
+printf 'BASE_BRANCH=main\n' >>"$FACTORY_CONF"
+G="$T/g"; gc() { git -C "$G" -c user.email=a@b -c user.name=t "$@"; }
+git init -q "$G" && gc checkout -q -b main
+printf '# Repo\n\n```factory-gates\nlint: true\nunit: true\n```\n' >"$G/AGENTS.md"
+gc add AGENTS.md && gc commit -q -m base
+gc checkout -q -b factory/010-g && echo "x" >"$G/a.txt" && gc add a.txt && gc commit -q -m work
+J="$T/repo/factory/jobs/010-g"; mkdir -p "$J"
+jq -nc --arg w "$G" '{id:"010-g",feature:"g",branch:"factory/010-g",worktree:$w,issue:null,pr:null,stage:"review"}' >"$J/job.json"
+first() { head -1 "$J/round-$1/$2.md"; }
+run_gate() { "$S/$1.sh" 010-g "$2" >/dev/null 2>&1; rc=$?; }
+
+run_gate eval 1
+check "passing gates: eval PASS, exit 0"            '[ $rc = 0 ] && [ "$(first 1 eval)" = "EVAL: PASS" ]'
+check "eval.md has no command output"               '! grep -q "attempt" "$J/round-1/eval.md" && [ -s "$J/round-1/eval/lint.log" ]'
+
+# a gate the branch adds to its own AGENTS.md is ignored: gates come from the base branch
+printf '```factory-gates\nevil: false\n```\n' >>"$G/AGENTS.md"; gc commit -q -am "edit gates on branch"
+run_gate eval 2
+check "branch cannot edit its own gates"            '[ $rc = 0 ] && [ "$(first 2 eval)" = "EVAL: PASS" ]'
+gc reset -q --hard HEAD~1
+
+# failing gate: warn blocks, shadow records only
+gc checkout -q main && printf '# Repo\n\n```factory-gates\nlint: true\nunit: false\n```\n' >"$G/AGENTS.md" && gc commit -q -am gates && gc checkout -q factory/010-g
+gc rebase -q main
+run_gate eval 3
+check "failing gate under warn: FAIL, exit 1"       '[ $rc = 1 ] && [ "$(first 3 eval)" = "EVAL: FAIL" ] && grep -q "^BLOCKING: yes" "$J/round-3/eval.md"'
+check "failing gate is retried twice"               'grep -q "^| unit | fail | 3 |" "$J/round-3/eval.md"'
+printf 'GATE_MODE=shadow\n' >>"$FACTORY_CONF"
+run_gate eval 4
+check "shadow mode records FAIL but never blocks"   '[ $rc = 0 ] && [ "$(first 4 eval)" = "EVAL: FAIL" ] && grep -q "^BLOCKING: no" "$J/round-4/eval.md"'
+
+# flaky: fails once, passes on the re-run
+gc checkout -q main && printf '# Repo\n\n```factory-gates\nflip: [ -f "$FLAG" ] || { touch "$FLAG"; false; }\n```\n' >"$G/AGENTS.md" && gc commit -q -am flaky && gc checkout -q factory/010-g && gc rebase -q main
+export FLAG="$T/flag"; rm -f "$FLAG"
+printf 'GATE_MODE=warn\n' >>"$FACTORY_CONF"
+run_gate eval 5
+check "flaky gate under warn: FLAKY, not blocking"  '[ $rc = 0 ] && [ "$(first 5 eval)" = "EVAL: FLAKY" ]'
+rm -f "$FLAG"; printf 'GATE_MODE=enforce\n' >>"$FACTORY_CONF"
+run_gate eval 6
+check "flaky gate under enforce blocks"             '[ $rc = 1 ] && grep -q "^BLOCKING: yes" "$J/round-6/eval.md"'
+printf 'GATE_MODE=warn\n' >>"$FACTORY_CONF"
+
+# no block at all: SKIPPED, never a pass
+gc checkout -q main && printf '# Repo\n' >"$G/AGENTS.md" && gc commit -q -am nogates && gc checkout -q factory/010-g && gc rebase -q main
+run_gate eval 7
+check "no factory-gates block: SKIPPED, exit 0"     '[ $rc = 0 ] && [ "$(first 7 eval)" = "EVAL: SKIPPED" ]'
+printf 'GATE_MODE=bogus\n' >>"$FACTORY_CONF"
+run_gate eval 8
+check "bad GATE_MODE exits 2"                       '[ $rc = 2 ]'
+printf 'GATE_MODE=warn\n' >>"$FACTORY_CONF"
+"$S/eval.sh" 999-none 1 >/dev/null 2>&1; rc=$?
+check "unknown job exits 2"                         '[ $rc = 2 ]'
+
+# scan: no scanners installed is INCOMPLETE, never CLEAN
+printf '{"results":[],"errors":[]}\n' >"$T/sg-clean.json"
+printf '[]\n' >"$T/gl-clean.json"
+jq -nc '{results:[{check_id:"js.xss",path:"a.txt",start:{line:3},extra:{severity:"ERROR"}}],errors:[]}' >"$T/sg-high.json"
+jq -nc '[{RuleID:"aws-key",File:"a.txt",StartLine:1,Secret:"AKIASECRETVALUE"}]' >"$T/gl-secret.json"
+NOSCAN="/usr/bin:/bin"
+PATH_BASE="$PATH"
+PATH="$HERE/bin:$NOSCAN" run_gate scan 1
+check "no scanner installed: INCOMPLETE"            '[ "$(first 1 scan)" = "SCAN: INCOMPLETE" ] && grep -q "not installed" "$J/round-1/scan.md"'
+check "INCOMPLETE does not block under warn"       '[ $rc = 0 ]'
+
+export PATH="$HERE/scanners:$PATH_BASE"
+export FAKE_SG_JSON="$T/sg-clean.json" FAKE_GL_REPORT="$T/gl-clean.json"
+run_gate scan 2
+check "both scanners clean: CLEAN, exit 0"          '[ $rc = 0 ] && [ "$(first 2 scan)" = "SCAN: CLEAN" ]'
+export FAKE_SG_JSON="$T/sg-high.json"
+run_gate scan 3
+check "high semgrep finding: FINDINGS, blocks"      '[ $rc = 1 ] && [ "$(first 3 scan)" = "SCAN: FINDINGS" ] && grep -q "| high | semgrep | js.xss | a.txt:3 |" "$J/round-3/scan.md"'
+export FAKE_SG_JSON="$T/sg-clean.json" FAKE_GL_REPORT="$T/gl-secret.json"
+run_gate scan 4
+check "gitleaks secret is a critical finding"       '[ $rc = 1 ] && grep -q "^| critical | gitleaks | aws-key |" "$J/round-4/scan.md"'
+check "scan.md never contains the secret value"     '! grep -rq "AKIASECRETVALUE" "$J/round-4/"'
+export FAKE_GL_REPORT="$T/gl-clean.json" FAKE_SG_RC=2
+run_gate scan 5
+check "crashed scanner: error row, INCOMPLETE"      '[ "$(first 5 scan)" = "SCAN: INCOMPLETE" ] && grep -q "| semgrep | error |" "$J/round-5/scan.md"'
+unset FAKE_SG_RC
+printf 'GATE_MODE=shadow\n' >>"$FACTORY_CONF"; export FAKE_GL_REPORT="$T/gl-secret.json"
+run_gate scan 6
+check "shadow mode: findings recorded, no block"    '[ $rc = 0 ] && grep -q "^BLOCKING: no" "$J/round-6/scan.md" && grep -q "aws-key" "$J/round-6/scan.md"'
+printf 'GATE_MODE=warn\n' >>"$FACTORY_CONF"
+
+# open-pr: a secret in the branch's commits is never pushed, in any mode
+git init -q --bare "$T/g-origin.git" && gc remote add origin "$T/g-origin.git"
+printf 'GATE_MODE=shadow\n' >>"$FACTORY_CONF"; : >"$T/gh/calls.log"
+cp "$J/round-6/scan.md" "$J/round-9-scan.tmp"; mkdir -p "$J/round-9"; mv "$J/round-9-scan.tmp" "$J/round-9/scan.md"
+"$S/open-pr.sh" 010-g ready >/dev/null 2>&1; rc=$?
+check "secret in scan.md: open-pr exits 4"          '[ $rc = 4 ]'
+check "secret in scan.md: nothing is pushed"        '! git -C "$T/g-origin.git" rev-parse --verify -q factory/010-g >/dev/null'
+check "secret in scan.md: no PR is created"         '! grep -q "pr create" "$T/gh/calls.log"'
+printf '[]\n' >"$T/gl-none.json"; export FAKE_GL_REPORT="$T/gl-none.json"; run_gate scan 10
+printf '# Spec\n' >"$J/spec.md"; echo '[]' >"$T/gh/prs.json"
+url="$("$S/open-pr.sh" 010-g ready 2>/dev/null)"; rc=$?
+check "clean scan: open-pr opens the PR"            '[ $rc = 0 ] && [ "$url" = "https://github.test/o/r/pull/7" ]'
+check "PR body carries the scan report"             'grep -q "## Gate: scan (round 10)" "$T/gh/last-body.md"'
+PATH="$PATH_BASE"; unset FAKE_SG_JSON FAKE_GL_REPORT
+
 [ $fail = 0 ] && echo "all passed" || { echo "FAILURES"; exit 1; }

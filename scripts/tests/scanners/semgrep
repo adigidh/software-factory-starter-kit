@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Fake semgrep: prints $FAKE_SG_JSON, exits $FAKE_SG_RC.
+[ -z "${FAKE_SG_JSON:-}" ] || cat "$FAKE_SG_JSON"
+exit "${FAKE_SG_RC:-0}"

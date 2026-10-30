@@ -25,7 +25,10 @@ checkout; your one file goes there.
 
 1. `AGENTS.md` (or `CLAUDE.md`).
 2. Everything in the job folder: `spec.md`, `build.md`, any `rework-*.md`, and
-   every `round-*/review-*.md`.
+   every `round-*/review-*.md`. In the final round's folder also read `eval.md`
+   (the repo's own checks) and `scan.md` (the security scan). They were written by
+   scripts, not by a reviewer, so weigh them above any claim in `build.md`. If one is
+   missing, say so under Gates; a missing file is not a pass.
 3. The change (`<base>` is the Base branch in your prompt): `git log --oneline <base>..<branch>` and `git diff <base>...<branch>`.
 
 ## Decide
@@ -38,7 +41,11 @@ APPROVE only if all of these hold:
   describes a real problem.
 - `git merge-tree --write-tree <base> <branch>` reports no conflicts.
 
-ESCALATE if any of them fails, or if the change:
+ESCALATE if any of them fails, or if either report in the final round says
+`BLOCKING: yes` (shadow mode never does). Name the report and line in "For the
+human". `FLAKY`, `INCOMPLETE`, `SKIPPED` and medium or low
+findings do not escalate on their own: state them under Gates so the reviewer of
+the pull request sees what was and was not checked. Otherwise ESCALATE if the change:
 
 - touches money, access or identity: payments, auth, permissions, or database
   and storage security rules;
@@ -58,6 +65,9 @@ Two or three sentences.
 
 ## Acceptance criteria
 1. <criterion>: met / not met, and how you know
+
+## Gates
+eval: <first line of eval.md, or "missing">. scan: <first line of scan.md, or "missing">.
 
 ## For the human
 Only when you escalate: the exact decision or check you need from them, and the
