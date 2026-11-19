@@ -23,7 +23,7 @@ finish() { # verdict blocking(yes|no) reason
   { printf 'EVAL: %s\nMODE: %s\nBLOCKING: %s\n' "$1" "$GATE_MODE" "$2"
     [ -z "${3:-}" ] || printf '\n%s\n' "$3"
     [ ! -s "$tmp/rows" ] || { printf '\n| Gate | Result | Runs | Seconds |\n|---|---|---|---|\n'; cat "$tmp/rows"; }
-    [ ! -s "$tmp/rows" ] || printf '\nLogs: factory/jobs/%s/%s/eval/<gate>.log (local only, not in the pull request).\n' "$id" "$(basename "$round_dir")"
+    [ ! -s "$tmp/rows" ] || printf '\nLogs: jobs/%s/%s/eval/<gate>.log under the factory state folder (local only, not in the pull request).\n' "$id" "$(basename "$round_dir")"
   } >"$out.tmp"
   mv "$out.tmp" "$out"
   echo "eval: $1 (mode $GATE_MODE, blocking $2)"

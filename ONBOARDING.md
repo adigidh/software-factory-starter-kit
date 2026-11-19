@@ -63,24 +63,31 @@ Run `gh auth setup-git` so `git push` uses the same credentials as `gh`.
 opens pull requests against one base branch: the repository's default branch unless the
 operator names another. Remember it as `BASE_BRANCH` (for example `main` or `develop`).
 
-## 3. Clone and keep job state out of the repo
+## 3. Clone, and keep job state outside every checkout
 
 ```bash
-git clone https://github.com/<owner/name>.git "$HOME/work/<name>"
-echo 'factory/jobs/' >> "$HOME/work/<name>/.git/info/exclude"
+git clone https://github.com/<owner/name>.git "$HOME/checkouts/<name>"
+mkdir -p "$HOME/work/factory/jobs"
+for f in backlog.md dashboard.html; do
+  [ -f "$HOME/work/factory/$f" ] || cp "$HOME/factory/$f" "$HOME/work/factory/$f"
+done
 ```
 
-Use the host the GitHub connection names if it is GitHub Enterprise. The exclude file
-keeps job state out of the target's `.gitignore` and out of every commit. If the clone
-already exists, `git -C "$HOME/work/<name>" fetch origin` instead, and add the exclude
-line only if it is missing.
+Use the host the GitHub connection names if it is GitHub Enterprise. The clone lives in
+`$HOME/checkouts/`, not under `$HOME/work/`: `work/` is backed up as plain data and must
+never hold a git repository. Job state lives in `$HOME/work/factory/`, which is not a repo.
+
+If `$HOME/work/<name>` exists, this is an install from before 0.3.0: stop, and follow the
+migration in the CHANGELOG for 0.3.0 before going on. If the clone already exists at
+`$HOME/checkouts/<name>`, run `git -C "$HOME/checkouts/<name>" fetch origin` instead. A clone
+that is broken can be deleted and re-cloned, but only when no job is in progress.
 
 ## 4. Write factory.conf
 
 ```bash
 cat > "$HOME/factory.conf" <<EOF
 REPO=<owner/name>
-CHECKOUT=$HOME/work/<name>
+CHECKOUT=$HOME/checkouts/<name>
 TRIGGER_LABEL=<label>
 BASE_BRANCH=<base branch>
 MAX_PARALLEL=1
@@ -167,6 +174,7 @@ to work around a block.
 ```bash
 bash "$HOME/scripts/worklist.sh" | jq .          # must print JSON with slots >= 1, no error
 ls "$HOME/.claude/agents" | wc -l                # at least 7
+[ -z "$(find "$HOME/work" -name .git 2>/dev/null)" ] && echo "work/ is git-free"  # must print the line
 ```
 
 Fix anything that fails and re-run. When the worklist and agents check pass and every

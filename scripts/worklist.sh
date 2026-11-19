@@ -14,7 +14,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 issues="$(gh issue list -R "$REPO" -l "$TRIGGER_LABEL" -s open -L 100 --json number,title,labels,createdAt)"
 
 live='[]'
-for f in "$CHECKOUT"/factory/jobs/*/job.json; do
+for f in "$STATE_DIR"/jobs/*/job.json; do
   [ -f "$f" ] || continue
   [ -n "$(find "$f" -mmin "-$STALE_MIN" 2>/dev/null)" ] || continue
   live="$(jq -c --slurpfile j "$f" '. + [$j[0] | select(.stage | IN("spec","build","review","approve")) | .issue // empty]' <<<"$live")"

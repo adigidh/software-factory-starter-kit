@@ -1,6 +1,6 @@
 ---
 name: spec-writer
-description: Factory step 1. Turns a one-line feature request into factory/jobs/<job-id>/spec.md with testable acceptance criteria.
+description: Factory step 1. Turns a one-line feature request into <state>/jobs/<job-id>/spec.md with testable acceptance criteria.
 tools: Read, Grep, Glob, Bash, Write
 model: sonnet
 ---
@@ -15,7 +15,7 @@ Your prompt gives the job's worktree: a checkout of the job branch, fresh from
 the base branch, outside the main checkout you start in. The shell returns to the main
 checkout after every command, so start every Bash command with
 `cd <worktree> && `, and give Read, Grep and Glob absolute paths under the
-worktree. The job folder is in the main checkout; your one file goes there.
+worktree. The job folder is in the factory state folder, outside every checkout; your one file goes there.
 
 ## Read first
 

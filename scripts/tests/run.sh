@@ -11,9 +11,13 @@ check() { if eval "$2"; then ok "$1"; else bad "$1"; fi; }
 
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 export PATH="$HERE/bin:$PATH" FAKE_GH_DIR="$T/gh" FACTORY_CONF="$T/factory.conf" FACTORY_STATE_DIR="$T/state"
-mkdir -p "$T/gh" "$T/repo/factory/jobs"
+mkdir -p "$T/gh" "$T/state/jobs"
 printf 'REPO=o/r\nCHECKOUT=%s\nMAX_PARALLEL=2\n' "$T/repo" >"$FACTORY_CONF"
 now='2026-01-01T00:00:00Z'
+
+dflt="$(env -u FACTORY_STATE_DIR HOME=/h FACTORY_CONF="$FACTORY_CONF" bash -c '. "$1"; echo "$STATE_DIR"' _ "$S/lib.sh")"
+check "job state defaults to work/, not the checkout" '[ "$dflt" = /h/work/factory ]'
+check "no script puts job state under CHECKOUT"       '! grep -qE "CHECKOUT.?/factory" "$S"/*.sh'
 
 issue() { # number title createdAt labels...
   local n=$1 t=$2 c=$3; shift 3
@@ -36,15 +40,15 @@ check "in-progress with no job is orphaned"        '[ "$(jq -c .orphaned <<<"$wl
 check "orphan frees its slot"                      '[ "$(jq .slots <<<"$wl")" = 2 ]'
 
 # a live job holds a slot and is not orphaned
-mkdir -p "$T/repo/factory/jobs/001-x"
-echo '{"id":"001-x","issue":3,"stage":"build"}' >"$T/repo/factory/jobs/001-x/job.json"
+mkdir -p "$T/state/jobs/001-x"
+echo '{"id":"001-x","issue":3,"stage":"build"}' >"$T/state/jobs/001-x/job.json"
 wl="$("$S/worklist.sh")"
 check "live job is not orphaned"                   '[ "$(jq -c .orphaned <<<"$wl")" = "[]" ]'
 check "live job holds a slot"                      '[ "$(jq .slots <<<"$wl")" = 1 ]'
-touch -t 202001010000 "$T/repo/factory/jobs/001-x/job.json"
+touch -t 202001010000 "$T/state/jobs/001-x/job.json"
 wl="$("$S/worklist.sh")"
 check "stale job.json makes the issue orphaned"    '[ "$(jq -c .orphaned <<<"$wl")" = "[3]" ]'
-rm -rf "$T/repo/factory/jobs/001-x"
+rm -rf "$T/state/jobs/001-x"
 
 # GH_HOST in factory.conf reaches gh
 printf 'GH_HOST=ghe.test\n' >>"$FACTORY_CONF"
@@ -75,9 +79,9 @@ git init -q "$T/wt" && git -C "$T/wt" checkout -q -b main \
   && git -C "$T/wt" checkout -q -b factory/002-y \
   && git -C "$T/wt" -c user.email=a@b -c user.name=t commit -q --allow-empty -m work
 git init -q --bare "$T/origin.git" && git -C "$T/wt" remote add origin "$T/origin.git"
-mkdir -p "$T/repo/factory/jobs/002-y"
-jq -nc --arg w "$T/wt" '{id:"002-y",feature:"do y",branch:"factory/002-y",worktree:$w,issue:5,pr:null,stage:"approve"}' >"$T/repo/factory/jobs/002-y/job.json"
-printf '# Do Y\n' >"$T/repo/factory/jobs/002-y/spec.md"; printf 'APPROVE\n\n## Why\nfine\n' >"$T/repo/factory/jobs/002-y/decision.md"
+mkdir -p "$T/state/jobs/002-y"
+jq -nc --arg w "$T/wt" '{id:"002-y",feature:"do y",branch:"factory/002-y",worktree:$w,issue:5,pr:null,stage:"approve"}' >"$T/state/jobs/002-y/job.json"
+printf '# Do Y\n' >"$T/state/jobs/002-y/spec.md"; printf 'APPROVE\n\n## Why\nfine\n' >"$T/state/jobs/002-y/decision.md"
 echo '[]' >"$T/gh/prs.json"; : >"$T/gh/calls.log"
 url="$("$S/open-pr.sh" 002-y ready 2>/dev/null)"
 check "open-pr prints the PR URL"                  '[ "$url" = "https://github.test/o/r/pull/7" ]'
@@ -94,15 +98,15 @@ check "no script mentions gh pr merge"             '! grep -rn "pr merge\|--auto
 git -C "$T/wt" checkout -q -b develop main && git -C "$T/wt" -c user.email=a@b -c user.name=t commit -q --allow-empty -m dev \
   && git -C "$T/wt" checkout -q -b factory/004-dev \
   && git -C "$T/wt" -c user.email=a@b -c user.name=t commit -q --allow-empty -m devwork
-mkdir -p "$T/repo/factory/jobs/004-dev"
-jq -nc --arg w "$T/wt" '{id:"004-dev",feature:"d",branch:"factory/004-dev",worktree:$w,issue:null,stage:"approve"}' >"$T/repo/factory/jobs/004-dev/job.json"
+mkdir -p "$T/state/jobs/004-dev"
+jq -nc --arg w "$T/wt" '{id:"004-dev",feature:"d",branch:"factory/004-dev",worktree:$w,issue:null,stage:"approve"}' >"$T/state/jobs/004-dev/job.json"
 printf 'BASE_BRANCH=develop\n' >>"$FACTORY_CONF"; : >"$T/gh/calls.log"
 "$S/open-pr.sh" 004-dev ready >/dev/null 2>&1
 check "BASE_BRANCH sets the PR base"               'grep -q -- "--base develop" "$T/gh/calls.log" && ! grep -q -- "--base main" "$T/gh/calls.log"'
 git -C "$T/wt" branch -q -f factory/003-empty develop
 git -C "$T/wt" checkout -q develop
 jq -nc --arg w "$T/wt" '{id:"003-empty",feature:"z",branch:"factory/003-empty",worktree:$w,issue:null,stage:"build"}' >"$T/x.json"
-mkdir -p "$T/repo/factory/jobs/003-empty"; cp "$T/x.json" "$T/repo/factory/jobs/003-empty/job.json"
+mkdir -p "$T/state/jobs/003-empty"; cp "$T/x.json" "$T/state/jobs/003-empty/job.json"
 "$S/open-pr.sh" 003-empty draft >/dev/null 2>&1; rc=$?
 check "branch with no commits exits 3"             '[ $rc = 3 ]'
 
@@ -113,7 +117,7 @@ git init -q "$G" && gc checkout -q -b main
 printf '# Repo\n\n```factory-gates\nlint: true\nunit: true\n```\n' >"$G/AGENTS.md"
 gc add AGENTS.md && gc commit -q -m base
 gc checkout -q -b factory/010-g && echo "x" >"$G/a.txt" && gc add a.txt && gc commit -q -m work
-J="$T/repo/factory/jobs/010-g"; mkdir -p "$J"
+J="$T/state/jobs/010-g"; mkdir -p "$J"
 jq -nc --arg w "$G" '{id:"010-g",feature:"g",branch:"factory/010-g",worktree:$w,issue:null,pr:null,stage:"review"}' >"$J/job.json"
 first() { head -1 "$J/round-$1/$2.md"; }
 run_gate() { "$S/$1.sh" 010-g "$2" >/dev/null 2>&1; rc=$?; }

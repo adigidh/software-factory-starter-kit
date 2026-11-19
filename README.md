@@ -88,7 +88,7 @@ CLAUDE.md, ONBOARDING.md  the agent's rules and first-run procedure
 .agents/skills/           factory (the loop: spec → build → 4 reviews → approve → PR) and tdd
 agents/                   spec-writer, builder, reviewer-{security,ux,ui,code}, approver
 scripts/                  worklist, precheck (schedule gate), issue-labels, open-pr, install-agents, eval, scan, tests/
-factory/dashboard.html    job board; open it against factory/jobs/
+factory/                  job board template (dashboard.html, backlog.md); copied to $HOME/work/factory/, which holds jobs/
 ```
 
 ## Without DAM

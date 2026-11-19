@@ -13,4 +13,4 @@ if [ -n "${GH_HOST:-}" ]; then export GH_HOST; fi
 LABEL_ACTIVE="$TRIGGER_LABEL:in-progress"
 LABEL_PR="$TRIGGER_LABEL:pr-open"
 LABEL_HUMAN="$TRIGGER_LABEL:needs-human"
-STATE_DIR="${FACTORY_STATE_DIR:-$HOME/.factory}"
+STATE_DIR="${FACTORY_STATE_DIR:-$HOME/work/factory}"

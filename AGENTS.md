@@ -42,5 +42,6 @@ $HOME/.agents/skills/factory/SKILL.md   the loop (read it before acting)
 $HOME/agents/                           sub-agent sources; install-agents.sh copies them to ~/.claude/agents/
 $HOME/scripts/                          worklist, precheck, issue-labels, open-pr, install-agents, eval, scan
 $HOME/factory.conf                      REPO, CHECKOUT, TRIGGER_LABEL, BASE_BRANCH, MAX_PARALLEL, STALE_MIN, GATE_MODE, GH_HOST (Enterprise only)
-$CHECKOUT/factory/jobs/<id>/            job state (not committed)
+$HOME/work/factory/jobs/<id>/           job state (plain data, not a git repo)
+$HOME/checkouts/<name>/                 scratch clone (CHECKOUT); job worktrees sit beside it in <name>-factory/
 ```

@@ -52,28 +52,30 @@ started or was handed.
 - Your session stays in the main checkout. Agents work in the job's worktree.
   The main checkout may be dirty or on another branch. The factory never merges
   into it; job branches leave as pull requests.
-- Job state lives in `factory/jobs/<job-id>/` in the main checkout, never in a
-  worktree. Each job has its own `job.json`, so sessions never write the same
+- Job state lives in `<state>/jobs/<job-id>/`, outside every git checkout and never
+  in a worktree. Each job has its own `job.json`, so sessions never write the same
   file.
 - Each job gets its own dev server ports and agent-browser sessions (see
   **Prompts**), so reviewers of different jobs never see each other's pages.
 
 ## Files
 
-`<repo>` is the main checkout (`git rev-parse --show-toplevel` from your
-session) and `<name>` is its folder name. `factory/jobs/` is gitignored runtime
-state that never lands in a commit. It is lost with the machine; the durable
-record is the pull request, whose body carries the spec, build log and decision.
+`<repo>` is the main checkout, the scratch clone at `$HOME/checkouts/<name>`
+(`git rev-parse --show-toplevel` from your session), and `<name>` is its folder
+name. `<state>` is the factory state folder, `$HOME/work/factory`: plain data,
+never a git repo, and backed up with `work/`. Nothing in it lands in a commit.
+The durable record is the pull request, whose body carries the spec, build log and
+decision.
 
 ```
-<repo>/factory/backlog.md                      queue for /factory next
-<repo>/factory/jobs/<job-id>/job.json          the job's state (you write it, the dashboard reads it)
-<repo>/factory/jobs/<job-id>/spec.md
-<repo>/factory/jobs/<job-id>/build.md
-<repo>/factory/jobs/<job-id>/rework-<k>.md     written by you, from /factory rework
-<repo>/factory/jobs/<job-id>/round-<N>/eval.md, scan.md   written by scripts/eval.sh and scan.sh
-<repo>/factory/jobs/<job-id>/round-<N>/review-{security,ux,ui,code}.md
-<repo>/factory/jobs/<job-id>/decision.md
+<state>/backlog.md                             queue for /factory next
+<state>/jobs/<job-id>/job.json                 the job's state (you write it, the dashboard reads it)
+<state>/jobs/<job-id>/spec.md
+<state>/jobs/<job-id>/build.md
+<state>/jobs/<job-id>/rework-<k>.md            written by you, from /factory rework
+<state>/jobs/<job-id>/round-<N>/eval.md, scan.md   written by scripts/eval.sh and scan.sh
+<state>/jobs/<job-id>/round-<N>/review-{security,ux,ui,code}.md
+<state>/jobs/<job-id>/decision.md
 <repo>/../<name>-factory/<job-id>/             the job's worktree, on factory/<job-id>
 ```
 
@@ -101,7 +103,7 @@ record is the pull request, whose body carries the spec, build log and decision.
 ### Prompts
 
 Every agent prompt starts with the job's absolute paths:
-`Job folder: <repo>/factory/jobs/<job-id>/. Worktree: <worktree>. Branch: factory/<job-id>. Base branch: <base>.`
+`Job folder: <state>/jobs/<job-id>/. Worktree: <worktree>. Branch: factory/<job-id>. Base branch: <base>.`
 Below, `<paths>` stands for that sentence.
 
 Agents that open pages also get a port. With `n` the job number (`003` → 3),
@@ -110,10 +112,10 @@ gets `5102 + 10n`, appended as ` Port: <port>.`
 
 ## /factory <feature>
 
-1. **Create the job.** `mkdir -p factory/jobs`, then pick the next 3-digit number
-   after the highest numbered folder in `factory/jobs/` (`001` if there are
+1. **Create the job.** `mkdir -p <state>/jobs`, then pick the next 3-digit number
+   after the highest numbered folder in `<state>/jobs/` (`001` if there are
    none) and a 2–4 word kebab-case slug of the feature: `004-blog-reading-time`.
-   Claim it with `mkdir factory/jobs/<job-id>` (no `-p`). If that fails because
+   Claim it with `mkdir <state>/jobs/<job-id>` (no `-p`). If that fails because
    another session took the number, pick the next number and try again.
    The worktree path is `$(cd .. && pwd)/$(basename "$PWD")-factory/<job-id>`,
    run from `<repo>`. Write `job.json` with that `worktree`, `issue` (the issue number when called
@@ -146,7 +148,7 @@ Read the first line of `build.md`.
 ### Review round N
 
 1. Set `stage: "review"`, `round: N` and all four reviews to `pending`. Create
-   `factory/jobs/<job-id>/round-<N>/`.
+   `<state>/jobs/<job-id>/round-<N>/`.
 2. **Gates.** Run both scripts once for this round, one after the other, and keep
    both exit codes (do not stop after the first one fails):
    ```bash
@@ -162,7 +164,7 @@ Read the first line of `build.md`.
    - **One blocks, resumes left**: skip the reviewers. Leave the four reviews
      `pending`, set `stage: "build"`, then resume the builder with `SendMessage` to
      `builder-<job-id>`:
-     `Round N gates blocked. Read factory/jobs/<job-id>/round-<N>/eval.md and scan.md (logs for a failing gate are in round-<N>/eval/<gate>.log), fix every blocking item, commit, and update build.md for round N+1.`
+     `Round N gates blocked. Read $HOME/work/factory/jobs/<job-id>/round-<N>/eval.md and scan.md (logs for a failing gate are in round-<N>/eval/<gate>.log), fix every blocking item, commit, and update build.md for round N+1.`
      Wait for it to finish, then go to **Build check**. This uses one resume, like a review.
    - **One blocks, no resumes left**: write `decision.md` yourself, reading
      `ESCALATE`, then a blank line, then
@@ -181,7 +183,7 @@ Read the first line of `build.md`.
    - **All PASS**: go to **Approve**.
    - **Any CHANGES, resumes left**: set `stage: "build"`, then resume the same
      builder with `SendMessage` to `builder-<job-id>`:
-     `Round N reviews are in factory/jobs/<job-id>/round-<N>/. Address every review with VERDICT: CHANGES, commit, and update build.md for round N+1.`
+     `Round N reviews are in $HOME/work/factory/jobs/<job-id>/round-<N>/. Address every review with VERDICT: CHANGES, commit, and update build.md for round N+1.`
      Wait for it to finish, then go to **Build check**.
    - **Any CHANGES, no resumes left**: write `decision.md` yourself, reading
      `ESCALATE`, then a blank line, then
@@ -256,7 +258,7 @@ label if you want a clean start); the next sweep picks it up.
 
 ## /factory next
 
-Read `factory/backlog.md` and take the first `- [ ]` item. Claim it with one
+Read `<state>/backlog.md` and take the first `- [ ]` item. Claim it with one
 Edit that replaces its exact line with `- [x] <item> → claimed`. If the Edit
 fails because the line changed, another session claimed it: re-read the backlog
 and try the next `- [ ]` item. If none is left, say so and stop.
@@ -274,7 +276,7 @@ existing draft PR ready for review). This does not merge anything.
 
 The job must be in `needs-human` or `pr-open`.
 
-1. Write the note, verbatim, to `factory/jobs/<job-id>/rework-<k>.md`, where `k`
+1. Write the note, verbatim, to `<state>/jobs/<job-id>/rework-<k>.md`, where `k`
    is the next unused number.
 2. Set `stage: "build"`.
 3. Spawn a fresh `builder` named `builder-<job-id>` with the prompt

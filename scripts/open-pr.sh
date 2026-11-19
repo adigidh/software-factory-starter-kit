@@ -13,7 +13,7 @@ id="${1:?job id}"
 mode="${2:?ready|draft}"
 case "$mode" in ready|draft) ;; *) echo "mode must be ready or draft" >&2; exit 2 ;; esac
 
-job="$CHECKOUT/factory/jobs/$id"
+job="$STATE_DIR/jobs/$id"
 [ -f "$job/job.json" ] || { echo "no job $id" >&2; exit 2; }
 branch="$(jq -r .branch "$job/job.json")"
 worktree="$(jq -r .worktree "$job/job.json")"

@@ -16,7 +16,7 @@ esac
 # job_init <job-id> <round>. Sets: id job round_dir worktree branch BASE_REF
 job_init() {
   id="$1"
-  job="$CHECKOUT/factory/jobs/$id"
+  job="$STATE_DIR/jobs/$id"
   [ -f "$job/job.json" ] || { echo "no job $id" >&2; exit 2; }
   case "$2" in ''|*[!0-9]*) echo "round must be a number" >&2; exit 2 ;; esac
   round_dir="$job/round-$2"
